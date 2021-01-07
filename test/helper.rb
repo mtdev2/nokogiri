@@ -4,11 +4,15 @@ SimpleCov.start do
 end
 
 $VERBOSE = true
+
 require 'minitest/autorun'
-require 'minitest/pride'
+require 'minitest/reporters'
+Minitest::Reporters.use!(Minitest::Reporters::DefaultReporter.new({color: true, slow_count: 5, detailed_skip: false}))
+
 require 'fileutils'
 require 'tempfile'
 require 'pp'
+require 'yaml'
 
 require 'nokogiri'
 
@@ -26,7 +30,8 @@ if ENV['TEST_NOKOGIRI_WITH_LIBXML_RUBY']
   warn "#{__FILE__}:#{__LINE__}: loaded libxml-ruby '#{LibXML::XML::VERSION}'"
 end
 
-warn "#{__FILE__}:#{__LINE__}: version info: #{Nokogiri::VERSION_INFO.inspect}"
+warn "#{__FILE__}:#{__LINE__}: version info:"
+warn Nokogiri::VERSION_INFO.to_yaml
 
 module Nokogiri
   class TestCase < MiniTest::Spec
@@ -53,7 +58,16 @@ module Nokogiri
     XSLT_FILE           = File.join(ASSETS_DIR, 'staff.xslt')
     XPATH_FILE          = File.join(ASSETS_DIR, 'slow-xpath.xml')
 
+    def setup
+      @fake_error_handler_called = false
+      Nokogiri::Test.__foreign_error_handler do
+        @fake_error_handler_called = true
+      end if Nokogiri.uses_libxml?
+    end
+
     def teardown
+      refute(@fake_error_handler_called, "the fake error handler should never get called") if Nokogiri.uses_libxml?
+
       if ENV['NOKOGIRI_GC']
         STDOUT.putc '!'
         if RUBY_PLATFORM =~ /java/
@@ -110,6 +124,14 @@ module Nokogiri
         "Expected #{mu_pp(recv)}.#{msg}(*#{mu_pp(args)}) to return false" }
       assert !recv.__send__(msg, *args), m
     end unless method_defined?(:assert_not_send)
+
+    def i_am_ruby_matching(gem_version_requirement_string)
+      Gem::Requirement.new(gem_version_requirement_string).satisfied_by?(Gem::Version.new(RUBY_VERSION))
+    end
+
+    def i_am_in_a_systemd_container
+      File.exist?("/proc/self/cgroup") && File.read("/proc/self/cgroup") =~ %r(/docker/|/garden/)
+    end
   end
 
   module SAX
@@ -121,6 +143,11 @@ module Nokogiri
         attr_reader :errors, :warnings, :end_elements_namespace
         attr_reader :xmldecls
         attr_reader :processing_instructions
+
+        def initialize
+          @errors = []
+          super
+        end
 
         def xmldecl version, encoding, standalone
           @xmldecls = [version, encoding, standalone].compact

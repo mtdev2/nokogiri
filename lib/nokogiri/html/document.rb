@@ -1,4 +1,7 @@
 # frozen_string_literal: true
+
+require 'pathname'
+
 module Nokogiri
   module HTML
     class Document < Nokogiri::XML::Document
@@ -161,10 +164,11 @@ module Nokogiri
         # Nokogiri::XML::ParseOptions::RECOVER.  See the constants in
         # Nokogiri::XML::ParseOptions.
         def parse string_or_io, url = nil, encoding = nil, options = XML::ParseOptions::DEFAULT_HTML
-
           options = Nokogiri::XML::ParseOptions.new(options) if Integer === options
-          # Give the options to the user
+
           yield options if block_given?
+
+          url ||= string_or_io.respond_to?(:path) ? string_or_io.path : nil
 
           if string_or_io.respond_to?(:encoding)
             unless string_or_io.encoding.name == "ASCII-8BIT"
@@ -173,7 +177,12 @@ module Nokogiri
           end
 
           if string_or_io.respond_to?(:read)
-            url ||= string_or_io.respond_to?(:path) ? string_or_io.path : nil
+            if string_or_io.is_a?(Pathname)
+              # resolve the Pathname to the file and open it as an IO object, see #2110
+              string_or_io = string_or_io.expand_path.open
+              url ||= string_or_io.path
+            end
+
             unless encoding
               # Libxml2's parser has poor support for encoding
               # detection.  First, it does not recognize the HTML5
@@ -252,9 +261,6 @@ module Nokogiri
         end
 
         def self.detect_encoding(chunk)
-          if Nokogiri.jruby? && EncodingReader.is_jruby_without_fix?
-            return EncodingReader.detect_encoding_for_jruby_without_fix(chunk)
-          end
           m = chunk.match(/\A(<\?xml[ \t\r\n]+[^>]*>)/) and
             return Nokogiri.XML(m[1]).encoding
 
@@ -271,26 +277,6 @@ module Nokogiri
             parser << chunk rescue Nokogiri::SyntaxError
             handler.encoding
           end
-        end
-
-        def self.is_jruby_without_fix?
-          JRUBY_VERSION.split('.').join.to_i < 165
-        end
-
-        def self.detect_encoding_for_jruby_without_fix(chunk)
-          m = chunk.match(/\A(<\?xml[ \t\r\n]+[^>]*>)/) and
-            return Nokogiri.XML(m[1]).encoding
-
-          m = chunk.match(/(<meta\s)(.*)(charset\s*=\s*([\w-]+))(.*)/i) and
-            return m[4]
-
-          catch(:encoding_found) {
-            Nokogiri::HTML::SAX::Parser.new(JumpSAXHandler.new(:encoding_found.to_s)).parse(chunk)
-            nil
-          }
-        rescue Nokogiri::SyntaxError, RuntimeError
-          # Ignore parser errors that nokogiri may raise
-          nil
         end
 
         def initialize(io)

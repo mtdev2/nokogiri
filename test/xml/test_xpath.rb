@@ -23,11 +23,6 @@ module Nokogiri
 
         @xml = Nokogiri::XML.parse(File.read(XML_FILE), XML_FILE)
 
-        @ns = @xml.root.namespaces
-
-        # TODO: Maybe I should move this to the original code.
-        @ns["nokogiri"] = "http://www.nokogiri.org/default_ns/ruby/extensions_functions"
-
         @handler = Class.new {
           attr_reader :things
 
@@ -36,6 +31,11 @@ module Nokogiri
           end
 
           def thing thing
+            @things << thing
+            thing
+          end
+
+          def another_thing thing
             @things << thing
             thing
           end
@@ -143,7 +143,7 @@ module Nokogiri
         set = if Nokogiri.uses_libxml?
                 @xml.search('//employee/address[my_filter(., "domestic", "Yes")]', @handler)
               else
-                @xml.search('//employee/address[nokogiri:my_filter(., "domestic", "Yes")]', @ns, @handler)
+                @xml.search('//employee/address[nokogiri:my_filter(., "domestic", "Yes")]', @handler)
               end
         assert set.length > 0
         set.each do |node|
@@ -155,7 +155,7 @@ module Nokogiri
         set = if Nokogiri.uses_libxml?
                 @xml.xpath('//employee/address[my_filter(., "domestic", "Yes")]', @handler)
               else
-                @xml.xpath('//employee/address[nokogiri:my_filter(., "domestic", "Yes")]', @ns, @handler)
+                @xml.xpath('//employee/address[nokogiri:my_filter(., "domestic", "Yes")]', @handler)
               end
         assert set.length > 0
         set.each do |node|
@@ -168,7 +168,7 @@ module Nokogiri
         if Nokogiri.uses_libxml?
           @xml.xpath('//employee[thing("asdf")]', @handler)
         else
-          @xml.xpath('//employee[nokogiri:thing("asdf")]', @ns, @handler)
+          @xml.xpath('//employee[nokogiri:thing("asdf")]', @handler)
         end
         assert_equal(set.length, @handler.things.length)
         assert_equal(['asdf'] * set.length, @handler.things)
@@ -236,7 +236,7 @@ module Nokogiri
         if Nokogiri.uses_libxml?
           result = @xml.xpath('thing("asdf")', @handler)
         else
-          result = @xml.xpath('nokogiri:thing("asdf")', @ns, @handler)
+          result = @xml.xpath('nokogiri:thing("asdf")', @handler)
         end
         assert_equal 'asdf', result
       end
@@ -246,7 +246,7 @@ module Nokogiri
         if Nokogiri.uses_libxml?
           @xml.xpath('//employee[thing(true())]', @handler)
         else
-          @xml.xpath("//employee[nokogiri:thing(true())]", @ns, @handler)
+          @xml.xpath("//employee[nokogiri:thing(true())]", @handler)
         end
         assert_equal(set.length, @handler.things.length)
         assert_equal([true] * set.length, @handler.things)
@@ -257,7 +257,7 @@ module Nokogiri
         if Nokogiri.uses_libxml?
           @xml.xpath('//employee[thing(false())]', @handler)
         else
-          @xml.xpath("//employee[nokogiri:thing(false())]", @ns, @handler)
+          @xml.xpath("//employee[nokogiri:thing(false())]", @handler)
         end
         assert_equal(set.length, @handler.things.length)
         assert_equal([false] * set.length, @handler.things)
@@ -268,7 +268,7 @@ module Nokogiri
         if Nokogiri.uses_libxml?
           @xml.xpath('//employee[thing(10)]', @handler)
         else
-          @xml.xpath('//employee[nokogiri:thing(10)]', @ns, @handler)
+          @xml.xpath('//employee[nokogiri:thing(10)]', @handler)
         end
         assert_equal(set.length, @handler.things.length)
         assert_equal([10] * set.length, @handler.things)
@@ -279,7 +279,7 @@ module Nokogiri
         if Nokogiri.uses_libxml?
           @xml.xpath('//employee[thing(name)]', @handler)
         else
-          @xml.xpath('//employee[nokogiri:thing(name)]', @ns, @handler)
+          @xml.xpath('//employee[nokogiri:thing(name)]', @handler)
         end
         assert_equal(set.length, @handler.things.length)
         assert_equal(set.to_a, @handler.things.flatten)
@@ -290,7 +290,7 @@ module Nokogiri
         if Nokogiri.uses_libxml?
           @xml.xpath('//employee[returns_array(name)]', @handler)
         else
-          @xml.xpath('//employee[nokogiri:returns_array(name)]', @ns, @handler)
+          @xml.xpath('//employee[nokogiri:returns_array(name)]', @handler)
         end
         assert_equal(set.length, @handler.things.length)
         assert_equal(set.to_a, @handler.things.flatten)
@@ -348,7 +348,7 @@ module Nokogiri
         if Nokogiri.uses_libxml?
           value = @xml.xpath('value()', @handler)
         else
-          value = @xml.xpath('nokogiri:value()', @ns, @handler)
+          value = @xml.xpath('nokogiri:value()', @handler)
         end
         assert_equal 123.456, value
       end
@@ -357,7 +357,7 @@ module Nokogiri
         if Nokogiri.uses_libxml?
           value = @xml.xpath('anint()', @handler)
         else
-          value = @xml.xpath('nokogiri:anint()', @ns, @handler)
+          value = @xml.xpath('nokogiri:anint()', @handler)
         end
         assert_equal 1230456, value
       end
@@ -374,13 +374,13 @@ module Nokogiri
       end
 
       def test_node_set_should_be_decorated
-        # "called decorate on nill" exception in JRuby issue#514
-        process_output= <<END
-<test>
- <track type="Image">
- <Format>LZ77</Format>
-</test>
-END
+        # "called decorate on nil" exception in JRuby issue#514
+        process_output= <<~END
+          <test>
+            <track type="Image">
+            <Format>LZ77</Format>
+          </test>
+        END
         doc = Nokogiri::XML.parse(process_output)
         node = doc.xpath(%{//track[@type='Video']})
         assert_equal "[]", node.xpath("Format").inspect
@@ -443,12 +443,12 @@ END
       end
 
       def test_xpath_after_reset_doc_via_innerhtml
-        xml = <<XML
-<?xml version="1.0" encoding="UTF-8"?>
-<document xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
-  <text:section name="Section1">[TEXT_INSIDE_SECTION]</text:section>
-</document>
-XML
+        xml = <<~XML
+          <?xml version="1.0" encoding="UTF-8"?>
+          <document xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+            <text:section name="Section1">[TEXT_INSIDE_SECTION]</text:section>
+          </document>
+        XML
 
         doc = Nokogiri::XML(xml)
         doc.inner_html = doc.inner_html
@@ -463,6 +463,109 @@ XML
           doc.xpath('//ns1:Root')
         rescue => e
           assert_equal false, e.message.include?('0:0')
+        end
+      end
+
+      describe "nokogiri-builtin:css-class xpath function" do
+        before do
+          @doc = Nokogiri::HTML::Document.parse("<html></html>")
+        end
+
+        it "accepts exactly two arguments" do
+          assert_raise(Nokogiri::XML::XPath::SyntaxError) do
+            @doc.xpath("nokogiri-builtin:css-class()")
+          end
+          assert_raise(Nokogiri::XML::XPath::SyntaxError) do
+            @doc.xpath("nokogiri-builtin:css-class('one')")
+          end
+          assert_raise(Nokogiri::XML::XPath::SyntaxError) do
+            @doc.xpath("nokogiri-builtin:css-class('one', 'two', 'three')")
+          end
+
+          @doc.xpath("nokogiri-builtin:css-class('one', 'two')")
+        end
+
+        it "returns true if second arg is zero-length" do
+          assert(@doc.xpath("nokogiri-builtin:css-class('anything', '')"))
+        end
+
+        it "matches equal string" do
+          refute(@doc.xpath("nokogiri-builtin:css-class('asdf', 'asd')"))
+          refute(@doc.xpath("nokogiri-builtin:css-class('asdf', 'sdf')"))
+          assert(@doc.xpath("nokogiri-builtin:css-class('asdf', 'asdf')"))
+          refute(@doc.xpath("nokogiri-builtin:css-class('asdf', 'xasdf')"))
+          refute(@doc.xpath("nokogiri-builtin:css-class('asdf', 'asdfx')"))
+        end
+
+        it "matches start of string" do
+          refute(@doc.xpath("nokogiri-builtin:css-class('asdf qwer', 'asd')"))
+          assert(@doc.xpath("nokogiri-builtin:css-class('asdf qwer', 'asdf')"))
+          refute(@doc.xpath("nokogiri-builtin:css-class('asdf qwer', 'asdfg')"))
+        end
+
+        it "matches end of string" do
+          refute(@doc.xpath("nokogiri-builtin:css-class('qwer asdf', 'sdf')"))
+          assert(@doc.xpath("nokogiri-builtin:css-class('qwer asdf', 'asdf')"))
+          refute(@doc.xpath("nokogiri-builtin:css-class('qwer asdf', 'xasdf')"))
+        end
+
+        it "matches middle of string" do
+          refute(@doc.xpath("nokogiri-builtin:css-class('qwer asdf zxcv', 'xasdf')"))
+          refute(@doc.xpath("nokogiri-builtin:css-class('qwer asdf zxcv', 'asd')"))
+          assert(@doc.xpath("nokogiri-builtin:css-class('qwer asdf zxcv', 'asdf')"))
+          refute(@doc.xpath("nokogiri-builtin:css-class('qwer asdf zxcv', 'sdf')"))
+          refute(@doc.xpath("nokogiri-builtin:css-class('qwer asdf zxcv', 'asdfx')"))
+        end
+
+        # see xmlIsBlank_ch()
+        [" ", "\t", "\n", "\r"].each do |ws|
+          it "only matches complete whitespace-delimited words (#{sprintf("0x%02X", ws.bytes.first)})" do
+            assert(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'qwer')"))
+            refute(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'q')"))
+            refute(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'qw')"))
+            refute(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'qwe')"))
+            refute(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'w')"))
+            refute(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'we')"))
+            refute(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'wer')"))
+            refute(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'e')"))
+            refute(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'er')"))
+            refute(@doc.xpath("nokogiri-builtin:css-class('a#{ws}qwer#{ws}b', 'r')"))
+          end
+        end
+      end
+
+      describe "jruby inferring XPath functions from the handler methods" do
+        it "should not get confused simply by a string similarity" do
+          # https://github.com/sparklemotion/nokogiri/pull/1890
+          # this describes a bug where XmlXpathContext naively replaced query substrings using method names
+          handler = Class.new do
+            def collision(nodes)
+              nil
+            end
+          end.new
+          found_by_id = @xml.xpath("//*[@id='partial_collision_id']", handler)
+          assert_equal 1, found_by_id.length
+        end
+
+        it "handles multiple handler function calls" do
+          # test that jruby handles this case identically to C
+          result = @xml.xpath('//employee[thing(.)]/employeeId[another_thing(.)]', @handler)
+          assert_equal(5, result.length)
+          assert_equal(10, @handler.things.length)
+        end
+
+        it "doesn't get confused by an XPath function, flavor 1" do
+          # test that it doesn't get confused by an XPath function
+          result = @xml.xpath('//employee[thing(.)]/employeeId[last()]', @handler)
+          assert_equal(5, result.length)
+          assert_equal(5, @handler.things.length)
+        end
+
+        it "doesn't get confused by an XPath function, flavor 2" do
+          # test that it doesn't get confused by an XPath function
+          result = @xml.xpath('//employee[last()]/employeeId[thing(.)]', @handler)
+          assert_equal(1, result.length)
+          assert_equal(1, @handler.things.length)
         end
       end
     end

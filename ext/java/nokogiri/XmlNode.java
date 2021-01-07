@@ -720,7 +720,7 @@ public class XmlNode extends RubyObject {
         // Do not touch this if, if it's not for a good reason.
         if (node.getNodeType() == Node.DOCUMENT_NODE ||
            otherNode.getNodeType() == Node.DOCUMENT_NODE) {
-            return context.runtime.newFixnum(-1);
+            return context.runtime.newFixnum(1);
         }
 
         try{
@@ -759,15 +759,13 @@ public class XmlNode extends RubyObject {
             klass = getNokogiriClass(runtime, "Nokogiri::HTML::Document");
             ctx = new HtmlDomParserContext(runtime, options);
             ((HtmlDomParserContext) ctx).enableDocumentFragment();
-            istream = new ByteArrayInputStream((rubyStringToString(str)).getBytes());
+            ctx.setStringInputSource(context, str, context.nil);
         } else {
             klass = getNokogiriClass(runtime, "Nokogiri::XML::Document");
             ctx = new XmlDomParserContext(runtime, options);
-            String input = rubyStringToString(str);
-            istream = new ByteArrayInputStream(input.getBytes());
+            ctx.setStringInputSource(context, str, context.nil);
         }
 
-        ctx.setInputSource(istream);
         // TODO: for some reason, document.getEncoding() can be null or nil (don't know why)
         // run `test_parse_with_unparented_html_text_context_node' few times to see this happen
         if (document instanceof HtmlDocument && !(document.getEncoding() == null || document.getEncoding().isNil())) {

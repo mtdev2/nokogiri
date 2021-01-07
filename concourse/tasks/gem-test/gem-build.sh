@@ -6,6 +6,7 @@ if [ -n "${BUILD_NATIVE_GEM:-}" ] ; then
   # normally part of rake-compiler-dock runas which we can't easily use in concourse
   . /etc/rubybashrc
   ln -s /usr/local/rake-compiler "$HOME"/.rake-compiler
+  export RAKE_EXTENSION_TASK_NO_NATIVE=true
 fi
 
 cd nokogiri
@@ -22,23 +23,20 @@ mkdir -p .git
 bundle install --local || bundle install
 
 # generate a fake version number
-cp -f ../ci/tasks/set-version-to-timestamp.rb tasks/set-version-to-timestamp.rb
-bundle exec rake -f tasks/set-version-to-timestamp.rb set-version-to-timestamp
+bundle exec rake set-version-to-timestamp
 
 if [ -n "${BUILD_NATIVE_GEM:-}" ] ; then
-  # TODO remove after https://github.com/rake-compiler/rake-compiler/pull/171 is shipped
-  find /usr/local/rvm/gems -name extensiontask.rb | while read f ; do
-    echo "rewriting $f"
-    sudo sed -i 's/callback.call(spec) if callback/@cross_compiling.call(spec) if @cross_compiling/' $f
-  done
-
-  bundle exec rake gem:x86_64-linux:guest
+  bundle exec rake gem:${BUILD_NATIVE_GEM}:builder FORCE_CROSS_COMPILING=true
 else
   # TODO we're only compiling so that we retrieve libxml2/libxslt
   # tarballs, we can do better a couple of different ways
   bundle exec rake clean compile
 
   bundle exec rake gem
+fi
+
+if [[ -e ./scripts/test-gem-file-contents ]] ; then
+  ./scripts/test-gem-file-contents pkg/nokogiri*.gem
 fi
 
 mkdir -p ${OUTPUT_DIR}

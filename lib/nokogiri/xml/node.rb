@@ -267,6 +267,8 @@ module Nokogiri
       #
       # Also see related method +swap+.
       def replace(node_or_tags)
+        raise("Cannot replace a node with no parent") unless parent
+
         # We cannot replace a text node directly, otherwise libxml will return
         # an internal error at parser.c:13031, I don't know exactly why
         # libxml is trying to find a parent node that is an element or document
@@ -278,7 +280,7 @@ module Nokogiri
           return replacee.replace node_or_tags
         end
 
-        node_or_tags = coerce(node_or_tags)
+        node_or_tags = parent.coerce(node_or_tags)
 
         if node_or_tags.is_a?(XML::NodeSet)
           node_or_tags.each { |n| add_previous_sibling n }
@@ -819,13 +821,30 @@ module Nokogiri
 
         return Nokogiri::XML::NodeSet.new(document) if contents.empty?
 
-        ##
-        # This is a horrible hack, but I don't care. See #313 for background.
+        # libxml2 does not obey the `recover` option after encountering errors during `in_context`
+        # parsing, and so this horrible hack is here to try to emulate recovery behavior.
+        #
+        # Unfortunately, this means we're no longer parsing "in context" and so namespaces that
+        # would have been inherited from the context node won't be handled correctly. This hack was
+        # written in 2010, and I regret it, because it's silently degrading functionality in a way
+        # that's not easily prevented (or even detected).
+        #
+        # I think preferable behavior would be to either:
+        #
+        # a. add an error noting that we "fell back" and pointing the user to turning off the `recover` option
+        # b. don't recover, but raise a sensible exception
+        #
+        # For context and background: https://github.com/sparklemotion/nokogiri/issues/313
+        # FIXME bug report: https://github.com/sparklemotion/nokogiri/issues/2092
         error_count = document.errors.length
         node_set = in_context(contents, options.to_i)
-        if node_set.empty? and document.errors.length > error_count and options.recover?
-          fragment = Nokogiri::HTML::DocumentFragment.parse contents
-          node_set = fragment.children
+        if (node_set.empty? && (document.errors.length > error_count))
+          if options.recover?
+            fragment = Nokogiri::HTML::DocumentFragment.parse contents
+            node_set = fragment.children
+          else
+            raise document.errors[error_count]
+          end
         end
         node_set
       end
@@ -1128,6 +1147,28 @@ module Nokogiri
 
       # @!endgroup
 
+      protected
+
+      def coerce(data)
+        case data
+        when XML::NodeSet
+          return data
+        when XML::DocumentFragment
+          return data.children
+        when String
+          return fragment(data).children
+        when Document, XML::Attr
+          # unacceptable
+        when XML::Node
+          return data
+        end
+
+        raise ArgumentError, <<-EOERR
+Requires a Node, NodeSet or String argument, and cannot accept a #{data.class}.
+(You probably want to select a node from the Document with at() or search(), or create a new Node via Node.new().)
+        EOERR
+      end
+
       private
 
       def keywordify(keywords)
@@ -1142,10 +1183,12 @@ module Nokogiri
       end
 
       def add_sibling(next_or_previous, node_or_tags)
+        raise("Cannot add sibling to a node with no parent") unless parent
+
         impl = (next_or_previous == :next) ? :add_next_sibling_node : :add_previous_sibling_node
         iter = (next_or_previous == :next) ? :reverse_each : :each
 
-        node_or_tags = coerce node_or_tags
+        node_or_tags = parent.coerce(node_or_tags)
         if node_or_tags.is_a?(XML::NodeSet)
           if text?
             pivot = Nokogiri::XML::Node.new "dummy", document
@@ -1180,26 +1223,6 @@ module Nokogiri
 
       def inspect_attributes
         [:name, :namespace, :attribute_nodes, :children]
-      end
-
-      def coerce(data)
-        case data
-        when XML::NodeSet
-          return data
-        when XML::DocumentFragment
-          return data.children
-        when String
-          return fragment(data).children
-        when Document, XML::Attr
-          # unacceptable
-        when XML::Node
-          return data
-        end
-
-        raise ArgumentError, <<-EOERR
-Requires a Node, NodeSet or String argument, and cannot accept a #{data.class}.
-(You probably want to select a node from the Document with at() or search(), or create a new Node via Node.new().)
-        EOERR
       end
 
       # @private

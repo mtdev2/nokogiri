@@ -4,13 +4,13 @@ VALUE cNokogiriHtmlSaxParserContext ;
 
 static void deallocate(xmlParserCtxtPtr ctxt)
 {
-  NOKOGIRI_DEBUG_START(handler);
+  NOKOGIRI_DEBUG_START(ctxt);
 
   ctxt->sax = NULL;
 
   htmlFreeParserCtxt(ctxt);
 
-  NOKOGIRI_DEBUG_END(handler);
+  NOKOGIRI_DEBUG_END(ctxt);
 }
 
 static VALUE
@@ -91,6 +91,8 @@ parse_with(VALUE self, VALUE sax_handler)
 
     ctxt->sax = sax;
     ctxt->userData = (void *)NOKOGIRI_SAX_TUPLE_NEW(ctxt, sax_handler);
+
+    xmlSetStructuredErrorFunc(NULL, NULL);
 
     rb_ensure(parse_doc, (VALUE)ctxt, parse_doc_finalize, (VALUE)ctxt);
 

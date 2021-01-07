@@ -16,10 +16,13 @@ mkdir -p .git
 bundle install --local || bundle install
 
 # generate a fake version number
-cp -f ../ci/tasks/set-version-to-timestamp.rb tasks/set-version-to-timestamp.rb
-bundle exec rake -f tasks/set-version-to-timestamp.rb set-version-to-timestamp
+bundle exec rake set-version-to-timestamp
 
 bundle exec rake java gem
+
+if [ -e ./scripts/test-gem-file-contents ] ; then
+  ./scripts/test-gem-file-contents pkg/nokogiri*java.gem
+fi
 
 mkdir -p ${OUTPUT_DIR}
 cp -v pkg/nokogiri*java.gem ${OUTPUT_DIR}
